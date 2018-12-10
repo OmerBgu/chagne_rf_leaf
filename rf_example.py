@@ -28,28 +28,187 @@ from sklearn.utils.validation import *
 from sklearn.naive_bayes import GaussianNB
 import numpy as np
 
+from sklearn.tree import DecisionTreeClassifier
 
-X = np.array([[-1, -1], [-2, -1], [-3, -2], [1, 1], [2, 1], [3, 2]])
-Y = np.array([1, 1, 1, 2, 2, 2])
-
-clf = GaussianNB()
-clf.fit(X, Y)
-
-print(clf.predict([[-0.8, -1]]))
+from sklearn.model_selection import train_test_split
+from sklearn.datasets import load_iris
 
 
-X, y = make_classification(n_samples=1000, n_features=4,n_informative=2, n_redundant=0,random_state=0, shuffle=False)
-rf = RandomForestClassifier(max_depth=2, random_state=0)
-print(X.shape)
+def set_leaves_model(self, leave_index):
+    for x in np.unique(leave_index):
+        x_index = np.where(leave_index == x)
+        x_index = list(x_index)[0]
+        x_train = self.X[x_index, :]
+        y_train = self.residuals[x_index, 0]
+        self.leaves_map[x] = GaussianNB()
+        self.leaves_map[x].fit(x_train, y_train)
+
+# The decision estimator has an attribute called tree_  which stores the entire
+# tree structure and allows access to low level attributes. The binary tree
+# tree_ is represented as a number of parallel arrays. The i-th element of each
+# array holds information about the node `i`. Node 0 is the tree's root. NOTE:
+# Some of the arrays only apply to either leaves or split nodes, resp. In this
+# case the values of nodes of the other type are arbitrary!
+#
+# Among those arrays, we have:
+#   - left_child, id of the left child of the node
+#   - right_child, id of the right child of the node
+#   - feature, feature used for splitting the node
+#   - threshold, threshold value at the node
+#
+
+# Using those arrays, we can parse the tree structure:
 
 
-rf.fit_GaussianNB(X, y)
-#RandomForestClassifier(bootstrap=True, class_weight=None, criterion='gini',
-#                max_depth=2, max_features='auto', max_leaf_nodes=None,
-#                min_impurity_decrease=0.0, min_impurity_split=None,
-#                min_samples_leaf=1, min_samples_split=2,
-#                min_weight_fraction_leaf=0.0, n_estimators=10, n_jobs=1,
-#                oob_score=False, random_state=0, verbose=0, warm_start=False)
-#print(clf.feature_importances_)
-print(rf.predict([[0, 0, 0, 0]]))
-# print's , means change proba  in this file   File tree.py line 830, proba : [[0.04218362 0.95781638]]
+def explore_tree(estimator, n_nodes, children_left,children_right, feature,threshold,
+                suffix='', print_tree= False, sample_id=0, feature_names=None):
+
+    if not feature_names:
+        feature_names = feature
+
+    assert len(feature_names) == X.shape[1], "The feature names do not match the number of features."
+    # The tree structure can be traversed to compute various properties such
+    # as the depth of each node and whether or not it is a leaf.
+    node_depth = np.zeros(shape=n_nodes, dtype=np.int64)
+    is_leaves = np.zeros(shape=n_nodes, dtype=bool)
+
+    stack = [(0, -1)]  # seed is the root node id and its parent depth
+    while len(stack) > 0:
+        node_id, parent_depth = stack.pop()
+        node_depth[node_id] = parent_depth + 1
+
+        # If we have a test node
+        if (children_left[node_id] != children_right[node_id]):
+            stack.append((children_left[node_id], parent_depth + 1))
+            stack.append((children_right[node_id], parent_depth + 1))
+        else:
+            is_leaves[node_id] = True
+
+    print("The binary tree structure has %s nodes"
+          % n_nodes)
+    if print_tree:
+        print("Tree structure: \n")
+        for i in range(n_nodes):
+            if is_leaves[i]:
+                print("%snode=%s leaf node." % (node_depth[i] * "\t", i))
+            else:
+                print("%snode=%s test node: go to node %s if X[:, %s] <= %s else to "
+                      "node %s."
+                      % (node_depth[i] * "\t",
+                         i,
+                         children_left[i],
+                         feature[i],
+                         threshold[i],
+                         children_right[i],
+                         ))
+            print("\n")
+        print()
+
+    # First let's retrieve the decision path of each sample. The decision_path
+    # method allows to retrieve the node indicator functions. A non zero element of
+    # indicator matrix at the position (i, j) indicates that the sample i goes
+    # through the node j.
+
+    node_indicator = estimator.decision_path(X_test)
+
+    # Similarly, we can also have the leaves ids reached by each sample.
+
+    leave_id = estimator.apply(X_test)
+
+    # Now, it's possible to get the tests that were used to predict a sample or
+    # a group of samples. First, let's make it for the sample.
+
+    #sample_id = 0
+    node_index = node_indicator.indices[node_indicator.indptr[sample_id]:
+                                        node_indicator.indptr[sample_id + 1]]
+
+    print(X_test[sample_id,:])
+
+    print('Rules used to predict sample %s: ' % sample_id)
+    for node_id in node_index:
+        # tabulation = " "*node_depth[node_id] #-> makes tabulation of each level of the tree
+        tabulation = ""
+        if leave_id[sample_id] == node_id:
+            print("%s==> Predicted leaf index \n"%(tabulation))
+
+        if (X_test[sample_id, feature[node_id]] <= threshold[node_id]):
+            threshold_sign = "<="
+        else:
+            threshold_sign = ">"
+
+        print("%sdecision id node %s : (X_test[%s, '%s'] (= %s) %s %s)"
+              % (tabulation,
+                 node_id,
+                 sample_id,
+                 feature_names[feature[node_id]],
+                 X_test[sample_id, feature[node_id]],
+                 threshold_sign,
+                 threshold[node_id]))
+    print("%sPrediction for sample %d: %s"%(tabulation,
+                                          sample_id,
+                                          estimator.predict(X_test)[sample_id]))
+
+    # For a group of samples, we have the following common node.
+    sample_ids = [sample_id, 1]
+    common_nodes = (node_indicator.toarray()[sample_ids].sum(axis=0) ==
+                    len(sample_ids))
+
+    common_node_id = np.arange(n_nodes)[common_nodes]
+
+    print("\nThe following samples %s share the node %s in the tree"
+          % (sample_ids, common_node_id))
+    print("It is %s %% of all nodes." % (100 * len(common_node_id) / n_nodes,))
+
+    for sample_id_ in sample_ids:
+        print("Prediction for sample %d: %s"%(sample_id_,
+                                          estimator.predict(X_test)[sample_id_]))
+
+
+
+iris = load_iris()
+X = iris.data
+y = iris.target
+import time
+
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+print("X_train: {}--------\n\n".format(X_train))
+#time.sleep( 2 )
+print("y_train: {}--------\n\n".format(y_train))
+#time.sleep( 2 )
+#print(X_train.shape)
+estimator = RandomForestClassifier(n_estimators=5, random_state=42)
+#stimator.fit(X_train, y_train)
+
+
+estimator.fit_new(X_train, y_train)
+exit(1)
+
+
+
+
+
+for i, e in enumerate(estimator.estimators_):
+    # n_nodes = estimator.tree_.node_count
+    t_tree = [t.tree_ for t in estimator.estimators_]
+    n_nodes_ = [t.tree_.node_count for t in estimator.estimators_]
+    children_left_ = [t.tree_.children_left for t in estimator.estimators_]
+    children_right_ = [t.tree_.children_right for t in estimator.estimators_]
+    feature_ = [t.tree_.feature for t in estimator.estimators_]
+    threshold_ = [t.tree_.threshold for t in estimator.estimators_]
+    # print("estimator.estimators_._parallel_built_trees {}".format(estimator.estimators_._parallel_built_trees()))
+
+    print("Tree %d\n"%i)
+    idx_left = np.argwhere(children_left_ == -1)[:, 0]
+    idx_right = np.argwhere(children_right_ == -1)[:, 0]
+    print("idx_left : {} ,idx_right : {} ".format(idx_left,idx_right))
+
+    explore_tree(estimator.estimators_[i],n_nodes_[i],children_left_[i],
+                 children_right_[i], feature_[i],threshold_[i],suffix = i, sample_id=1,
+                 feature_names=["Feature_%d"%i for i in range(X_test.shape[1])])
+    print('\n'*2)
+
+
+
+
