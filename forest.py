@@ -1102,30 +1102,62 @@ class RandomForestClassifier(ForestClassifier):
 
 
     def predict_new(self, X):
-        predictions = self.predict(X)
-        print("Trure predictions : {} in len {}".format(predictions,len(predictions)) )
+        #predictions = self.predict(X)
+        #print("Trure predictions : {} in len {}".format(predictions,len(predictions)) )
 
 
         instances_in_leaves = self.apply(X)  # X_leaves : array_like, shape = [n_samples, n_estimators]
         mapping_dict_X = {}
+        mapping_go_back_to_X = dict()
 
         for index, x in np.ndenumerate(instances_in_leaves):
             #print("index : {} index[0] : {} index[1] : {} x : {} , X[{}] : {} ".format(index,index[0],index[1],x,index[0],X[index[0]]))
             key = (index[1],x)
+            if index[0] not in mapping_go_back_to_X:
+                mapping_go_back_to_X[index[0]] = list()
+            mapping_go_back_to_X[index[0]].append(key)
+
             if key in mapping_dict_X:
                 mapping_dict_X[key] = np.vstack((mapping_dict_X[key], X[index[0]]))
+                #mapping_go_back_to_X[key].append(index[0])
             else:
+                #print("key {} index[0] {} ".format(key,index[0]))
                 mapping_dict_X[key] =  np.array(X[index[0]]).reshape(1,-1)
-
+                #mapping_go_back_to_X[key] = list()
+                #mapping_go_back_to_X[key].append(index[0])
+                #mapping_go_back_to_X[index[0]].append(key)
+        leaf_predict = {}
         i = 0
-        total_len = 0
-        for item in mapping_dict_X.values():
+        print("mapping_go_back_to_X {}".format(mapping_go_back_to_X))
+        for key, value in mapping_dict_X.items():
             #print("item  {} : {}".format(i,item))
-            pred = self.nb_estimators[i].predict(item)
-            print("pred : {} in len : {}".format(pred,len(pred)))
-            total_len+=len(pred)
-            i = i +1
-        print("total_len : {}".format(total_len))
+            counts = np.bincount(self.nb_estimators[i].predict(value))
+            leaf_predict[key] = np.argmax(counts)
+            i+=1
+        #print("total_len : {}".format(total_len))
+        #print("mapping_go_back_to_X : {} ".format(mapping_go_back_to_X))
+        #print("mapping_dict_X: {} ".format(mapping_dict_X))
+        print("leaf_predict : {} ".format(leaf_predict))
+
+        y_pridicted = None
+        for key, value in mapping_go_back_to_X.items():
+            print("location in X_teset(key) {}  nodes(value) : {} ".format(key, value))
+            preidctions_per_row = []
+            for tu in value:
+                print("leaf_predict[tu] : {}".format(leaf_predict[tu]))
+                preidctions_per_row.append(leaf_predict[tu])
+
+            counts = np.bincount(preidctions_per_row)
+            print("majority : {}".format(np.argmax(counts)))
+            if y_pridicted is None:
+
+                y_pridicted = np.array(np.argmax(counts))
+                print("new y_pridicted : {}".format(y_pridicted))
+            else:
+                y_pridicted= np.append(y_pridicted ,np.argmax(counts))
+                print("stacked y_pridicted : {} in len {}".format(y_pridicted,len(y_pridicted )))
+        print("y_pridicted {} in len {}".format(y_pridicted ,len(y_pridicted )))
+        return y_pridicted
 
 class RandomForestRegressor(ForestRegressor):
     """A random forest regressor.
