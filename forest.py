@@ -49,8 +49,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 from scipy.sparse import issparse
 from scipy.sparse import hstack as sparse_hstack
-
-
+from sklearn.naive_bayes import GaussianNB
 from ..base import ClassifierMixin, RegressorMixin
 from ..externals.joblib import Parallel, delayed
 from ..externals import six
@@ -373,238 +372,8 @@ class BaseForest(six.with_metaclass(ABCMeta, BaseEnsemble)):
         return self
 
 
-    def NB_fit(self, X, y, sample_weight = None):
-        #super()
-        #apply(X, y, sample_weight = None,fit)
-
-        #2 time apply . first for
-        instances_in_leaves = self.apply(X)
-        rows, cols = instances_in_leaves.shape
-        for i in range(cols):
-            self.EstimatorDetails_ls[i].setLeavesModel(instances_in_leaves[:, i])
-
-        #apply()
-        pass
-
-    def nb_predict(self):
-        #apply
-        pass
-
-    def set_leaves_model(self, leave_index):
-        for x in np.unique(leave_index):
-            x_index = np.where(leave_index == x)
-            x_index = list(x_index)[0]
-            x_train = self.X[x_index, :]
-            y_train = self.residuals[x_index, 0]
-            self.leaves_map[x] = GaussianNB()
-            self.leaves_map[x].fit(x_train, y_train)
 
 
-    def explore_tree(self, n_nodes, children_left, children_right, feature, threshold,
-                     suffix='', print_tree=False, sample_id=0, feature_names=None):
-
-        if not feature_names:
-            feature_names = feature
-
-        assert len(feature_names) == X.shape[1], "The feature names do not match the number of features."
-        # The tree structure can be traversed to compute various properties such
-        # as the depth of each node and whether or not it is a leaf.
-        node_depth = np.zeros(shape=n_nodes, dtype=np.int64)
-        is_leaves = np.zeros(shape=n_nodes, dtype=bool)
-
-        stack = [(0, -1)]  # seed is the root node id and its parent depth
-        while len(stack) > 0:
-            node_id, parent_depth = stack.pop()
-            node_depth[node_id] = parent_depth + 1
-
-            # If we have a test node
-            if (children_left[node_id] != children_right[node_id]):
-                stack.append((children_left[node_id], parent_depth + 1))
-                stack.append((children_right[node_id], parent_depth + 1))
-            else:
-                is_leaves[node_id] = True
-
-        print("The binary tree structure has %s nodes"
-              % n_nodes)
-        if print_tree:
-            print("Tree structure: \n")
-            for i in range(n_nodes):
-                if is_leaves[i]:
-                    print("%snode=%s leaf node." % (node_depth[i] * "\t", i))
-                else:
-                    print("%snode=%s test node: go to node %s if X[:, %s] <= %s else to "
-                          "node %s."
-                          % (node_depth[i] * "\t",
-                             i,
-                             children_left[i],
-                             feature[i],
-                             threshold[i],
-                             children_right[i],
-                             ))
-                print("\n")
-            print()
-
-        # First let's retrieve the decision path of each sample. The decision_path
-        # method allows to retrieve the node indicator functions. A non zero element of
-        # indicator matrix at the position (i, j) indicates that the sample i goes
-        # through the node j.
-
-        node_indicator = estimator.decision_path(X_test)
-
-        # Similarly, we can also have the leaves ids reached by each sample.
-
-        leave_id = estimator.apply(X_test)
-        rows, cols = leave_id.shape
-        # for i in leave_id:
-        #         print("leave_id : ".format(i))
-        for i in range(cols):
-            self.EstimatorDetails_ls[i].set_leaves_model(instances_in_leaves[:, i])
-
-        # Now, it's possible to get the tests that were used to predict a sample or
-        # a group of samples. First, let's make it for the sample.
-
-        # sample_id = 0
-        node_index = node_indicator.indices[node_indicator.indptr[sample_id]:
-                                            node_indicator.indptr[sample_id + 1]]
-
-        print(X_test[sample_id, :])
-
-        print('Rules used to predict sample %s: ' % sample_id)
-        for node_id in node_index:
-            # tabulation = " "*node_depth[node_id] #-> makes tabulation of each level of the tree
-            tabulation = ""
-            if leave_id[sample_id] == node_id:
-                print("%s==> Predicted leaf index \n" % (tabulation))
-
-            if (X_test[sample_id, feature[node_id]] <= threshold[node_id]):
-                threshold_sign = "<="
-            else:
-                threshold_sign = ">"
-
-            print("%sdecision id node %s : (X_test[%s, '%s'] (= %s) %s %s)"
-                  % (tabulation,
-                     node_id,
-                     sample_id,
-                     feature_names[feature[node_id]],
-                     X_test[sample_id, feature[node_id]],
-                     threshold_sign,
-                     threshold[node_id]))
-        print("%sPrediction for sample %d: %s" % (tabulation,
-                                                  sample_id,
-                                                  estimator.predict(X_test)[sample_id]))
-
-        # For a group of samples, we have the following common node.
-        sample_ids = [sample_id, 1]
-        common_nodes = (node_indicator.toarray()[sample_ids].sum(axis=0) ==
-                        len(sample_ids))
-
-        common_node_id = np.arange(n_nodes)[common_nodes]
-
-        print("\nThe following samples %s share the node %s in the tree"
-              % (sample_ids, common_node_id))
-        print("It is %s %% of all nodes." % (100 * len(common_node_id) / n_nodes,))
-
-        for sample_id_ in sample_ids:
-            print("Prediction for sample %d: %s" % (sample_id_,
-                                                    estimator.predict(X_test)[sample_id_]))
-
-    def fit_GaussianNB(self, X, y, sample_weight=None):
-        # Validate or convert input data
-        X = check_array(X, accept_sparse="csc", dtype=DTYPE)
-        y = check_array(y, accept_sparse='csc', ensure_2d=False, dtype=None)
-        if sample_weight is not None:
-            sample_weight = check_array(sample_weight, ensure_2d=False)
-        if issparse(X):
-            # Pre-sort indices to avoid that each individual tree of the
-            # ensemble sorts the indices.
-            X.sort_indices()
-
-        # Remap output
-        n_samples, self.n_features_ = X.shape
-
-        y = np.atleast_1d(y)
-        if y.ndim == 2 and y.shape[1] == 1:
-            warn("A column-vector y was passed when a 1d array was"
-                 " expected. Please change the shape of y to "
-                 "(n_samples,), for example using ravel().",
-                 DataConversionWarning, stacklevel=2)
-
-        if y.ndim == 1:
-            # reshape is necessary to preserve the data contiguity against vs
-            # [:, np.newaxis] that does not.
-            y = np.reshape(y, (-1, 1))
-
-        self.n_outputs_ = y.shape[1]
-
-        y, expanded_class_weight = self._validate_y_class_weight(y)
-
-        if getattr(y, "dtype", None) != DOUBLE or not y.flags.contiguous:
-            y = np.ascontiguousarray(y, dtype=DOUBLE)
-
-        if expanded_class_weight is not None:
-            if sample_weight is not None:
-                sample_weight = sample_weight * expanded_class_weight
-            else:
-                sample_weight = expanded_class_weight
-
-        # Check parameters
-        self._validate_estimator()
-
-        if not self.bootstrap and self.oob_score:
-            raise ValueError("Out of bag estimation only available"
-                             " if bootstrap=True")
-
-        random_state = check_random_state(self.random_state)
-
-        if not self.warm_start or not hasattr(self, "estimators_"):
-            # Free allocated memory, if any
-            self.estimators_ = []
-
-        n_more_estimators = self.n_estimators - len(self.estimators_)
-
-        if n_more_estimators < 0:
-            raise ValueError('n_estimators=%d must be larger or equal to '
-                             'len(estimators_)=%d when warm_start==True'
-                             % (self.n_estimators, len(self.estimators_)))
-
-        elif n_more_estimators == 0:
-            warn("Warm-start fitting without increasing n_estimators does not "
-                 "fit new trees.")
-        else:
-            if self.warm_start and len(self.estimators_) > 0:
-                # We draw from the random state to get the random state we
-                # would have got if we hadn't used a warm_start.
-                random_state.randint(MAX_INT, size=len(self.estimators_))
-
-            trees = []
-            for i in range(n_more_estimators):
-                tree = self._make_estimator(append=False,
-                                            random_state=random_state)
-                trees.append(tree)
-
-            # Parallel loop: we use the threading backend as the Cython code
-            # for fitting the trees is internally releasing the Python GIL
-            # making threading always more efficient than multiprocessing in
-            # that case.
-            trees = Parallel(n_jobs=self.n_jobs, verbose=self.verbose,
-                             backend="threading")(
-                delayed(_parallel_build_trees_GaussianNB)(
-                    t, self, X, y, sample_weight, i, len(trees),
-                    verbose=self.verbose, class_weight=self.class_weight)
-                for i, t in enumerate(trees))
-
-            # Collect newly grown trees
-            self.estimators_.extend(trees)
-
-        if self.oob_score:
-            self._set_oob_score(X, y)
-
-        # Decapsulate classes_ attributes
-        if hasattr(self, "classes_") and self.n_outputs_ == 1:
-            self.n_classes_ = self.n_classes_[0]
-            self.classes_ = self.classes_[0]
-
-        return self
 
     @abstractmethod
     def _set_oob_score(self, X, y):
@@ -1286,43 +1055,70 @@ class RandomForestClassifier(ForestClassifier):
         self.min_impurity_decrease = min_impurity_decrease
         self.min_impurity_split = min_impurity_split
         # omer add info calss
-        self.EstimatorDetails_ls = []
-        self.X = []
-        self.y = []
+        self.mapping_dict_X = {}
+        self.mapping_dict_y = {}
+        self.nb_estimators = []
 
 
-    def setLeavesModel(self, leave_index):
-        from sklearn.naive_bayes import GaussianNB
-        for x in np.unique(leave_index):
-            x_index = np.where(leave_index == x)
-            x_index = list(x_index)[0]
-            x_train = self.X[x_index, :]
-            y_train = self.y[x_index,0]
-            self.leaves_map[x] = GaussianNB()
-            self.leaves_map[x].fit(x_train, y_train)
+
+
+
 
 
     def fit_new(self, X, y):
-        self.X = X
-        self.y = y
         super(ForestClassifier, self).fit(X, y)
         instances_in_leaves = self.apply(X) #X_leaves : array_like, shape = [n_samples, n_estimators]
         # For each datapoint x in X and for each tree in the forest, return the index of the leaf x ends up in.
 
-        print("instances_in_leaves : {}".format(instances_in_leaves))
+        for index, x in np.ndenumerate(instances_in_leaves):
+            #print("index : {} index[0] : {} index[1] : {} x : {} , X[{}] : {} ".format(index,index[0],index[1],x,index[0],X[index[0]]))
+            key = (index[1],x)
+            if key in self.mapping_dict_X:
+                self.mapping_dict_X[key] = np.vstack((self.mapping_dict_X[key], X[index[0]]))
+            else:
+                self.mapping_dict_X[key] =  np.array(X[index[0]]).reshape(1,-1)
 
-        #print(instances_in_leaves) # shape (112, 5) -> 112 X samples ,5 tree , 112 aray of 5 each one
-        #[n_samples, n_estimators]
-        rows, cols = instances_in_leaves.shape
-        print("rows {} cols {}".format(rows, cols ))
-        for i in range(cols):
-            self.EstimatorDetails_ls[i].setLeavesModel(instances_in_leaves[:, i])
+            if key in self.mapping_dict_y:
+                self.mapping_dict_y[key] = np.vstack((self.mapping_dict_y[key], y[index[0]]))
+            else:
+                self.mapping_dict_y[key] =  np.array(y[index[0]]).reshape(-1,)
+
+        print_dict = 0
+        if print_dict :
+            for the_key, the_value in self.mapping_dict_X.items():
+                print(the_key, 'corresponds to X', the_value)
+
+            for the_key, the_value in self.mapping_dict_y.items():
+                print(the_key, 'corresponds to y', the_value)
+
+        for (k, v), (k2, v2) in zip(self.mapping_dict_X.items(), self.mapping_dict_y.items()):
+            #print("key {} X len {} y len {}".format(k,v.shape,v2.shape))
+            self.nb_estimators = GaussianNB()
+            self.nb_estimators.fit(v,v2)
+
+        print("after fit!!!!")
 
 
+    def predict_new(self, X):
+        predictions = self.predict(X)
+        print("predictions : {}".format(predictions) )
 
-    from sklearn.naive_bayes import GaussianNB
 
+        instances_in_leaves = self.apply(X)  # X_leaves : array_like, shape = [n_samples, n_estimators]
+        mapping_dict_X = []
 
+        for index, x in np.ndenumerate(instances_in_leaves):
+            #print("index : {} index[0] : {} index[1] : {} x : {} , X[{}] : {} ".format(index,index[0],index[1],x,index[0],X[index[0]]))
+            key = (index[1],x)
+            if key in mapping_dict_X:
+                mapping_dict_X[key] = np.vstack((mapping_dict_X[key], X[index[0]]))
+            else:
+                mapping_dict_X[key] =  np.array(X[index[0]]).reshape(1,-1)
+
+        i = 0
+        for item in mapping_dict_X.items():
+            self.nb_estimators[i].predict(item)
+            i = i +1
 
 class RandomForestRegressor(ForestRegressor):
     """A random forest regressor.
