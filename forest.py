@@ -1091,21 +1091,23 @@ class RandomForestClassifier(ForestClassifier):
             for the_key, the_value in self.mapping_dict_y.items():
                 print(the_key, 'corresponds to y', the_value)
 
+        i = 0
         for (k, v), (k2, v2) in zip(self.mapping_dict_X.items(), self.mapping_dict_y.items()):
             #print("key {} X len {} y len {}".format(k,v.shape,v2.shape))
-            self.nb_estimators = GaussianNB()
-            self.nb_estimators.fit(v,v2)
+            self.nb_estimators.append(GaussianNB())
+            self.nb_estimators[i].fit(v,v2)
+            i=i+1
 
         print("after fit!!!!")
 
 
     def predict_new(self, X):
         predictions = self.predict(X)
-        print("predictions : {}".format(predictions) )
+        print("Trure predictions : {} in len {}".format(predictions,len(predictions)) )
 
 
         instances_in_leaves = self.apply(X)  # X_leaves : array_like, shape = [n_samples, n_estimators]
-        mapping_dict_X = []
+        mapping_dict_X = {}
 
         for index, x in np.ndenumerate(instances_in_leaves):
             #print("index : {} index[0] : {} index[1] : {} x : {} , X[{}] : {} ".format(index,index[0],index[1],x,index[0],X[index[0]]))
@@ -1116,9 +1118,14 @@ class RandomForestClassifier(ForestClassifier):
                 mapping_dict_X[key] =  np.array(X[index[0]]).reshape(1,-1)
 
         i = 0
-        for item in mapping_dict_X.items():
-            self.nb_estimators[i].predict(item)
+        total_len = 0
+        for item in mapping_dict_X.values():
+            #print("item  {} : {}".format(i,item))
+            pred = self.nb_estimators[i].predict(item)
+            print("pred : {} in len : {}".format(pred,len(pred)))
+            total_len+=len(pred)
             i = i +1
+        print("total_len : {}".format(total_len))
 
 class RandomForestRegressor(ForestRegressor):
     """A random forest regressor.
