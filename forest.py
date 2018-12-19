@@ -1057,7 +1057,7 @@ class RandomForestClassifier(ForestClassifier):
         # omer add info calss
         self.mapping_dict_X = {}
         self.mapping_dict_y = {}
-        self.nb_estimators = []
+        self.nb_estimators = {}
 
 
 
@@ -1069,9 +1069,7 @@ class RandomForestClassifier(ForestClassifier):
         super(ForestClassifier, self).fit(X, y)
         instances_in_leaves = self.apply(X) #X_leaves : array_like, shape = [n_samples, n_estimators]
         # For each datapoint x in X and for each tree in the forest, return the index of the leaf x ends up in.
-
         for index, x in np.ndenumerate(instances_in_leaves):
-            #print("index : {} index[0] : {} index[1] : {} x : {} , X[{}] : {} ".format(index,index[0],index[1],x,index[0],X[index[0]]))
             key = (index[1],x)
             if key in self.mapping_dict_X:
                 self.mapping_dict_X[key] = np.vstack((self.mapping_dict_X[key], X[index[0]]))
@@ -1083,80 +1081,46 @@ class RandomForestClassifier(ForestClassifier):
             else:
                 self.mapping_dict_y[key] =  np.array(y[index[0]]).reshape(-1,)
 
-        print_dict = 0
-        if print_dict :
-            for the_key, the_value in self.mapping_dict_X.items():
-                print(the_key, 'corresponds to X', the_value)
-
-            for the_key, the_value in self.mapping_dict_y.items():
-                print(the_key, 'corresponds to y', the_value)
-
-        i = 0
         for (k, v), (k2, v2) in zip(self.mapping_dict_X.items(), self.mapping_dict_y.items()):
-            #print("key {} X len {} y len {}".format(k,v.shape,v2.shape))
-            self.nb_estimators.append(GaussianNB())
-            self.nb_estimators[i].fit(v,v2)
-            i=i+1
+            self.nb_estimators[k] = GaussianNB()
+            self.nb_estimators[k].fit(v,v2)
 
-        print("after fit!!!!")
 
 
     def predict_new(self, X):
-        #predictions = self.predict(X)
-        #print("Trure predictions : {} in len {}".format(predictions,len(predictions)) )
-
-
         instances_in_leaves = self.apply(X)  # X_leaves : array_like, shape = [n_samples, n_estimators]
         mapping_dict_X = {}
         mapping_go_back_to_X = dict()
 
         for index, x in np.ndenumerate(instances_in_leaves):
-            #print("index : {} index[0] : {} index[1] : {} x : {} , X[{}] : {} ".format(index,index[0],index[1],x,index[0],X[index[0]]))
-            key = (index[1],x)
+            key = (index[1],x) # (tree,node) , index[1] - tree number , index[0] - sample 0..37 in X, x - leaf ID
             if index[0] not in mapping_go_back_to_X:
                 mapping_go_back_to_X[index[0]] = list()
             mapping_go_back_to_X[index[0]].append(key)
 
             if key in mapping_dict_X:
                 mapping_dict_X[key] = np.vstack((mapping_dict_X[key], X[index[0]]))
-                #mapping_go_back_to_X[key].append(index[0])
             else:
-                #print("key {} index[0] {} ".format(key,index[0]))
                 mapping_dict_X[key] =  np.array(X[index[0]]).reshape(1,-1)
-                #mapping_go_back_to_X[key] = list()
-                #mapping_go_back_to_X[key].append(index[0])
-                #mapping_go_back_to_X[index[0]].append(key)
         leaf_predict = {}
-        i = 0
-        print("mapping_go_back_to_X {}".format(mapping_go_back_to_X))
+
         for key, value in mapping_dict_X.items():
-            #print("item  {} : {}".format(i,item))
-            counts = np.bincount(self.nb_estimators[i].predict(value))
+            counts = np.bincount(self.nb_estimators[key].predict(value))
             leaf_predict[key] = np.argmax(counts)
-            i+=1
-        #print("total_len : {}".format(total_len))
-        #print("mapping_go_back_to_X : {} ".format(mapping_go_back_to_X))
-        #print("mapping_dict_X: {} ".format(mapping_dict_X))
-        print("leaf_predict : {} ".format(leaf_predict))
+
 
         y_pridicted = None
         for key, value in mapping_go_back_to_X.items():
-            print("location in X_teset(key) {}  nodes(value) : {} ".format(key, value))
             preidctions_per_row = []
             for tu in value:
-                print("leaf_predict[tu] : {}".format(leaf_predict[tu]))
                 preidctions_per_row.append(leaf_predict[tu])
 
             counts = np.bincount(preidctions_per_row)
-            print("majority : {}".format(np.argmax(counts)))
             if y_pridicted is None:
 
                 y_pridicted = np.array(np.argmax(counts))
-                print("new y_pridicted : {}".format(y_pridicted))
             else:
                 y_pridicted= np.append(y_pridicted ,np.argmax(counts))
-                print("stacked y_pridicted : {} in len {}".format(y_pridicted,len(y_pridicted )))
-        print("y_pridicted {} in len {}".format(y_pridicted ,len(y_pridicted )))
         return y_pridicted
 
 class RandomForestRegressor(ForestRegressor):
